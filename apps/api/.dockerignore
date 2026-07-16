@@ -1,0 +1,7 @@
+# Keep the build context small/fast — none of these are needed in the image.
+.venv
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+# NOTE: seed_data/ is intentionally NOT ignored — it is baked into the image.

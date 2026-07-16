@@ -1,0 +1,17 @@
+# dependencies / build
+node_modules/
+.venv/
+__pycache__/
+apps/web/out/
+apps/web/.next/
+apps/api/client/
+apps/api/seed_data/
+data/
+# large / internal assets — kept out of the public repo
+shots/
+docs/
+*.pptx
+*.pdf
+DRISHTI_Datathon2026.md
+.superpowers/
+.DS_Store
