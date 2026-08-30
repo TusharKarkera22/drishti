@@ -1,6 +1,8 @@
 // API client + TypeScript mirror of the Dataset Manifest contract
 // (source of truth: apps/api/app/models/manifest.py)
 
+import type { PersistedInvestigationState } from "@/lib/investigation-context";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8400";
 
@@ -627,3 +629,66 @@ export async function getPredictions(dsId: string): Promise<PredictionResult> {
   );
   return r.json() as Promise<PredictionResult>;
 }
+
+// ---- Finale intelligence suite ----
+
+export interface TemporalComparisonFrame {
+  index: number;
+  from: string;
+  to: string;
+  rows: number;
+  cells: { lat: number; lng: number; count: number; previous_count: number; delta: number; change: "emerging" | "persistent" | "declining" }[];
+}
+
+export interface TemporalComparisonData {
+  available: boolean;
+  reason?: string;
+  current: { rows: number };
+  previous: { rows: number };
+  delta: { absolute: number; percent: number | null };
+  areas: { key: string; current: number; previous: number; absolute: number; percent: number | null }[];
+  categories: { key: string; current: number; previous: number; absolute: number; percent: number | null }[];
+  frames: TemporalComparisonFrame[];
+  window: { current: { from: string; to: string }; previous: { from: string; to: string } };
+  dataset_version: string;
+  generated_at: string;
+  evidence_id: string;
+}
+
+export type TemporalComparison = TemporalComparisonData | { available: false; reason: string };
+
+export async function getTemporalComparison(dsId: string, from: string, to: string, params: Record<string, string> = {}) {
+  const qs = new URLSearchParams({ from_date: from, to_date: to, ...params });
+  const r = await check(await fetch(`${API_BASE}/api/temporal/${dsId}/compare?${qs}`));
+  return r.json() as Promise<TemporalComparison>;
+}
+
+export type InvestigationKind = "area" | "hotspot" | "entity" | "alert" | "finding" | "mission";
+export type InvestigationStatus = "new" | "reviewing" | "actioned" | "resolved";
+export type InvestigationPriority = "low" | "medium" | "high" | "critical";
+export interface InvestigationCard {
+  id: string; title: string; kind: InvestigationKind; target: string; status: InvestigationStatus;
+  priority: InvestigationPriority; owner: string; notes: string; state: PersistedInvestigationState;
+  created_at: string; updated_at: string;
+}
+export interface CreateInvestigationCardInput { title: string; kind: InvestigationKind; target?: string; priority?: InvestigationPriority; owner?: string; notes?: string; state?: PersistedInvestigationState; }
+export interface UpdateInvestigationCardInput { title?: string; status?: InvestigationStatus; priority?: InvestigationPriority; owner?: string; notes?: string; }
+export interface WatchRule { id: string; name: string; metric: "percent_change"; operator: "gte" | "lte"; threshold: number; from_date: string; to_date: string; area: string; category: string; enabled: boolean; }
+export interface CreateWatchRuleInput { name: string; metric: "percent_change"; operator: "gte" | "lte"; threshold: number; from_date: string; to_date: string; area?: string; category?: string; enabled?: boolean; }
+export interface UpdateWatchRuleInput { name?: string; threshold?: number; from_date?: string; to_date?: string; area?: string; category?: string; enabled?: boolean; }
+export interface WatchEvent { id: string; rule_id: string; rule_name: string; matched: boolean; value: number | null; threshold: number; evidence_id: string; at: string; created?: boolean; }
+
+async function investigationRequest<T>(path: string, method = "GET", data?: object): Promise<T> {
+  const r = await check(await fetch(`${API_BASE}${path}`, { method, headers: data ? { "Content-Type": "application/json" } : undefined, body: data ? JSON.stringify({ data }) : undefined }));
+  return r.json() as Promise<T>;
+}
+export const listInvestigationCards = (ds: string) => investigationRequest<InvestigationCard[]>(`/api/investigations/${ds}/cards`);
+export const createInvestigationCard = (ds: string, data: CreateInvestigationCardInput) => investigationRequest<InvestigationCard>(`/api/investigations/${ds}/cards`, "POST", data);
+export const updateInvestigationCard = (ds: string, id: string, data: UpdateInvestigationCardInput) => investigationRequest<InvestigationCard>(`/api/investigations/${ds}/cards/${id}`, "PATCH", data);
+export const deleteInvestigationCard = (ds: string, id: string) => investigationRequest<{ ok: boolean }>(`/api/investigations/${ds}/cards/${id}`, "DELETE");
+export const listWatchRules = (ds: string) => investigationRequest<WatchRule[]>(`/api/investigations/${ds}/rules`);
+export const createWatchRule = (ds: string, data: CreateWatchRuleInput) => investigationRequest<WatchRule>(`/api/investigations/${ds}/rules`, "POST", data);
+export const updateWatchRule = (ds: string, id: string, data: UpdateWatchRuleInput) => investigationRequest<WatchRule>(`/api/investigations/${ds}/rules/${id}`, "PATCH", data);
+export const deleteWatchRule = (ds: string, id: string) => investigationRequest<{ ok: boolean }>(`/api/investigations/${ds}/rules/${id}`, "DELETE");
+export const evaluateWatchRule = (ds: string, id: string) => investigationRequest<WatchEvent>(`/api/investigations/${ds}/rules/${id}/evaluate`, "POST");
+export const listWatchEvents = (ds: string) => investigationRequest<WatchEvent[]>(`/api/investigations/${ds}/events`);

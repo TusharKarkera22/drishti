@@ -102,8 +102,15 @@ function ReportInner() {
   const ds = params.get("ds") ?? "";
   const [hb, setHb] = useState<Handbook | null>(null);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState("");
-  const [summaryState, setSummaryState] = useState<"idle" | "loading" | "error">("idle");
+  const summaryKey = `${ds}:${lang}`;
+  const [summaryResult, setSummaryResult] = useState<
+    | { key: string; status: "idle"; summary: string }
+    | { key: string; status: "error"; summary: "" }
+    | null
+  >(null);
+  const currentSummary = summaryResult?.key === summaryKey ? summaryResult : null;
+  const summary = currentSummary?.summary ?? "";
+  const summaryState = currentSummary?.status ?? "loading";
 
   useEffect(() => {
     if (!ds) return;
@@ -112,14 +119,14 @@ function ReportInner() {
 
   useEffect(() => {
     if (!ds) return;
-    setSummaryState("loading");
+    let active = true;
     getHandbookSummary(ds, lang)
-      .then((r) => {
-        setSummary(r.summary);
-        setSummaryState("idle");
-      })
-      .catch(() => setSummaryState("error"));
-  }, [ds, lang]);
+      .then((r) => active && setSummaryResult({ key: summaryKey, status: "idle", summary: r.summary }))
+      .catch(() => active && setSummaryResult({ key: summaryKey, status: "error", summary: "" }));
+    return () => {
+      active = false;
+    };
+  }, [ds, lang, summaryKey]);
 
   const trendOption = useMemo(() => {
     const rows = hb?.monthly_trend?.rows ?? [];

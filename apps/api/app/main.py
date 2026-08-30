@@ -4,11 +4,64 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 from app.core import store
-from app.core.config import CORS_ORIGINS
-from app.routers import agents, alerts, analytics, datasets, graph, ingest, insights, intake, predict, query, reports
+from app.core.config import CORS_ORIGINS, MAX_UPLOAD_REQUEST_BYTES
+from app.routers import agents, alerts, analytics, datasets, graph, ingest, insights, intake, investigations, predict, query, reports, temporal
 from app.services import alerts as alerts_svc
+
+UPLOAD_BODY_LIMIT_BYTES = MAX_UPLOAD_REQUEST_BYTES
+_UPLOAD_PATHS = ("/api/ingest", "/api/intake/clean")
+
+
+class _UploadBodyTooLarge(Exception):
+    pass
+
+
+class UploadBodyLimitMiddleware:
+    """Bound upload bodies before Starlette's multipart parser can spool them."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope.get("path", "").startswith(_UPLOAD_PATHS):
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        content_length = headers.get(b"content-length")
+        if content_length:
+            try:
+                if int(content_length) > UPLOAD_BODY_LIMIT_BYTES:
+                    await JSONResponse({"detail": "upload request body is too large"}, status_code=413)(
+                        scope, receive, send
+                    )
+                    return
+            except ValueError:
+                await JSONResponse({"detail": "invalid Content-Length header"}, status_code=400)(
+                    scope, receive, send
+                )
+                return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > UPLOAD_BODY_LIMIT_BYTES:
+                    raise _UploadBodyTooLarge
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _UploadBodyTooLarge:
+            await JSONResponse({"detail": "upload request body is too large"}, status_code=413)(
+                scope, receive, send
+            )
 
 
 @asynccontextmanager
@@ -45,6 +98,7 @@ async def _prewarm_graphs() -> None:
 
 app = FastAPI(title="Drishti — Schema-Agnostic Intelligence Platform",
               version="0.2.0", lifespan=lifespan)
+app.add_middleware(UploadBodyLimitMiddleware)
 
 # Catalyst's AppSail gateway injects its own CORS headers. Adding ours on top produces
 # DUPLICATE Access-Control-Allow-Origin headers, which browsers reject ("Failed to fetch").
@@ -70,6 +124,8 @@ app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(intake.router, prefix="/api/intake", tags=["intake"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 app.include_router(predict.router, prefix="/api/predict", tags=["predict"])
+app.include_router(temporal.router, prefix="/api/temporal", tags=["temporal"])
+app.include_router(investigations.router, prefix="/api/investigations", tags=["investigations"])
 
 
 @app.get("/health")

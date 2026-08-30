@@ -15,19 +15,22 @@ export default function PageIntro({ id, text }: { id: string; text: string }) {
   const [dismissed, setDismissed] = useState(true); // default hidden until we check localStorage (avoids SSR flash)
 
   useEffect(() => {
-    try {
-      setDismissed(window.localStorage.getItem(`${STORAGE_PREFIX}${id}`) === "1");
-    } catch {
-      setDismissed(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
+    let timer: number | undefined = window.setTimeout(() => {
+      try {
+        setDismissed(window.localStorage.getItem(`${STORAGE_PREFIX}${id}`) === "1");
+      } catch {
+        setDismissed(false);
+      }
+    }, 0);
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ id?: string } | undefined>).detail;
       // If the event names a specific page id, only react when it matches us;
       // an event with no detail re-shows the intro on every mounted page.
       if (detail?.id && detail.id !== id) return;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
       setDismissed(false);
       try {
         window.localStorage.removeItem(`${STORAGE_PREFIX}${id}`);
@@ -36,7 +39,10 @@ export default function PageIntro({ id, text }: { id: string; text: string }) {
       }
     };
     window.addEventListener("drishti:showintro", handler);
-    return () => window.removeEventListener("drishti:showintro", handler);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener("drishti:showintro", handler);
+    };
   }, [id]);
 
   const dismiss = () => {

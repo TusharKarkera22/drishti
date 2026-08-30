@@ -32,12 +32,15 @@ export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved === "kn" || saved === "en") setLangState(saved);
-    } catch {
-      /* localStorage unavailable — stay on default */
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved === "kn" || saved === "en") setLangState(saved);
+      } catch {
+        /* localStorage unavailable — stay on default */
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const setLang = (l: Lang) => {

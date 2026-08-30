@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import cytoscape from "cytoscape";
 import Shell from "@/components/Shell";
 import PageIntro from "@/components/PageIntro";
 import { getEgo, getGraphSummary, getOffenderProfile, searchGraph, type OffenderProfile } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
+import { contextFromSearchParams } from "@/lib/investigation-context";
 
 const NODE_COLORS: Record<string, string> = {
   case: "#8aa3c0",
@@ -14,25 +16,81 @@ const NODE_COLORS: Record<string, string> = {
   victim: "#2dd4bf",
 };
 
-function NetworkInner() {
-  const params = useSearchParams();
+function NetworkWorkspace({ query }: { query: string }) {
   const { t } = useLang();
-  const ds = params.get("ds") ?? "";
+  const decoded = contextFromSearchParams(query).context;
+  const ds = decoded.dataset ?? "";
+  const deepLinkedNode = decoded.node ?? "";
   const cyDiv = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const [summary, setSummary] = useState<Awaited<ReturnType<typeof getGraphSummary>> | null>(null);
+  const egoRequestRef = useRef(0);
+  const [summaryResult, setSummaryResult] = useState<{
+    ds: string;
+    value: Awaited<ReturnType<typeof getGraphSummary>> | null;
+    error: string;
+  } | null>(null);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Awaited<ReturnType<typeof searchGraph>>>([]);
   const [selected, setSelected] = useState("");
   const [edgeInfo, setEdgeInfo] = useState("");
-  const [error, setError] = useState("");
-  const [profile, setProfile] = useState<OffenderProfile | null>(null);
+  const [profileResult, setProfileResult] = useState<{
+    key: string;
+    value: OffenderProfile | null;
+  } | null>(null);
+  const summary = summaryResult?.ds === ds ? summaryResult.value : null;
+  const error = summaryResult?.ds === ds ? summaryResult.error : "";
+  const profileKey = `${ds}:${selected}`;
+  const profile = selected && profileResult?.key === profileKey ? profileResult.value : null;
 
   useEffect(() => {
     if (!ds) return;
-    setError("");
-    setSummary(null);
-    getGraphSummary(ds).then(setSummary).catch((e) => setError(String(e)));
+    getGraphSummary(ds)
+      .then((value) => setSummaryResult({ ds, value, error: "" }))
+      .catch((e) => setSummaryResult({ ds, value: null, error: String(e) }));
+  }, [ds]);
+
+  const loadEgo = useCallback(
+    async (nodeId: string) => {
+      if (!ds) return;
+      const requestId = ++egoRequestRef.current;
+      setSelected(nodeId);
+      setEdgeInfo("");
+      let ego;
+      try {
+        ego = await getEgo(ds, nodeId, 2);
+      } catch {
+        if (requestId === egoRequestRef.current) setEdgeInfo("Unable to load this network view.");
+        return;
+      }
+      if (requestId !== egoRequestRef.current) return;
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.elements().remove();
+      cy.add([
+        ...ego.nodes.map((n) => ({
+          data: {
+            id: n.id,
+            label: n.label.length > 16 ? n.label.slice(0, 15) + "…" : n.label,
+            color: NODE_COLORS[n.kind] ?? "#6b7a8f",
+            size: n.is_center ? 34 : n.kind === "case" ? 14 : 24,
+            border: n.is_center ? 3 : 0,
+          },
+        })),
+        ...ego.edges.map((e, i) => ({
+          data: { id: `e${i}`, source: e.source, target: e.target, kind: e.kind, value: e.value },
+        })),
+      ]);
+      cy.layout({ name: "cose", animate: false, nodeRepulsion: () => 8000 }).run();
+      cy.fit(undefined, 30);
+    },
+    [ds]
+  );
+  const handleNodeTap = useEffectEvent((nodeId: string) => {
+    void loadEgo(nodeId);
+  });
+
+  useEffect(() => () => {
+    egoRequestRef.current += 1;
   }, [ds]);
 
   useEffect(() => {
@@ -84,7 +142,7 @@ function NetworkInner() {
     cy.on("tap", "node", (e) => {
       const id = e.target.id();
       if (id.startsWith("accused:") || id.startsWith("victim:") || id.startsWith("case:")) {
-        loadEgoRef.current?.(id);
+        handleNodeTap(id);
       }
     });
     cy.on("tap", "edge", (e) => {
@@ -98,47 +156,19 @@ function NetworkInner() {
     };
   }, []);
 
-  const loadEgo = useCallback(
-    async (nodeId: string) => {
-      if (!ds) return;
-      setSelected(nodeId);
-      setEdgeInfo("");
-      const ego = await getEgo(ds, nodeId, 2);
-      const cy = cyRef.current;
-      if (!cy) return;
-      cy.elements().remove();
-      cy.add([
-        ...ego.nodes.map((n) => ({
-          data: {
-            id: n.id,
-            label: n.label.length > 16 ? n.label.slice(0, 15) + "…" : n.label,
-            color: NODE_COLORS[n.kind] ?? "#6b7a8f",
-            size: n.is_center ? 34 : n.kind === "case" ? 14 : 24,
-            border: n.is_center ? 3 : 0,
-          },
-        })),
-        ...ego.edges.map((e, i) => ({
-          data: { id: `e${i}`, source: e.source, target: e.target, kind: e.kind, value: e.value },
-        })),
-      ]);
-      cy.layout({ name: "cose", animate: false, nodeRepulsion: () => 8000 }).run();
-      cy.fit(undefined, 30);
-    },
-    [ds]
-  );
-  const loadEgoRef = useRef(loadEgo);
   useEffect(() => {
-    loadEgoRef.current = loadEgo;
-  }, [loadEgo]);
+    if (!deepLinkedNode || !ds || !cyRef.current) return;
+    void loadEgo(deepLinkedNode);
+  }, [deepLinkedNode, ds, loadEgo]);
 
   useEffect(() => {
-    if (!ds || !selected) { setProfile(null); return; }
+    if (!ds || !selected) return;
     let active = true;
     getOffenderProfile(ds, selected)
-      .then((p) => active && setProfile(p.case_count > 0 ? p : null))
-      .catch(() => active && setProfile(null));
+      .then((p) => active && setProfileResult({ key: profileKey, value: p.case_count > 0 ? p : null }))
+      .catch(() => active && setProfileResult({ key: profileKey, value: null }));
     return () => { active = false; };
-  }, [ds, selected]);
+  }, [ds, selected, profileKey]);
 
   const doSearch = useCallback(async () => {
     if (!ds || !q) return;
@@ -163,12 +193,12 @@ function NetworkInner() {
               "Link analysis connects records through people and shared identifiers — names, phone numbers, addresses. This dataset has none, so there's no network to map."
             )}
           </p>
-          <a
+          <Link
             href="/"
             className="value-mono text-xs px-4 py-2 border border-line text-dim hover:text-amber hover:border-amber transition-colors inline-block"
           >
             {t("network.switchDataset", "← Open a dataset with linkable people (e.g. the crime dataset)")}
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -301,6 +331,12 @@ function NetworkInner() {
       </div>
     </div>
   );
+}
+
+function NetworkInner() {
+  const params = useSearchParams();
+  const query = params.toString();
+  return <NetworkWorkspace key={query} query={query} />;
 }
 
 export default function NetworkPage() {

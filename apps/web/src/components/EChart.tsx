@@ -25,7 +25,10 @@ export default function EChart({
   // keep the latest handler in a ref so inline onClick props don't force a
   // full setOption redraw on every parent re-render
   const onClickRef = useRef(onClick);
-  onClickRef.current = onClick;
+
+  useEffect(() => {
+    onClickRef.current = onClick;
+  }, [onClick]);
 
   useEffect(() => {
     if (!ref.current) return;

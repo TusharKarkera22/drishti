@@ -4,7 +4,6 @@ view. The job runs on a daemon thread (cleaning is CPU-bound pandas; the AppSail
 is long-running). Jobs live in-process and die on container recycle (fine for the demo)."""
 from __future__ import annotations
 
-import io
 import re
 import threading
 import uuid
@@ -15,7 +14,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core import store
 from app.core.config import DATA_DIR
-from app.routers.ingest import _safe_table_name
+from app.routers.ingest import _safe_table_name, read_upload_dataframe
 from app.services import append as append_svc
 from app.services import crime_pack, intake
 from app.services import llm
@@ -99,15 +98,8 @@ def _start_job(df: pd.DataFrame, *, key_col: str, name: str, job_id: str | None 
 @router.post("/clean")
 async def clean(file: UploadFile = File(...), name: str = Form("Cleaned Dataset"),
                 dest_dataset_id: str = Form("")) -> dict:
-    raw = await file.read()
+    raw, df = await read_upload_dataframe(file)
     fn = (file.filename or "upload.csv").lower()
-    try:
-        df = (pd.read_excel(io.BytesIO(raw)) if fn.endswith((".xlsx", ".xls"))
-              else pd.read_csv(io.BytesIO(raw)))
-    except Exception as e:
-        raise HTTPException(400, f"could not parse file: {e}")
-    if df.empty:
-        raise HTTPException(400, "uploaded file has no rows")
     df = _norm_cols(df)
     key_col = df.columns[0]
     job_id = uuid.uuid4().hex[:10]
