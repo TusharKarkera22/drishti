@@ -460,22 +460,18 @@ function PredictiveTriage({ ds }: { ds: string }) {
 // the (multi-second) insights bundle computes, instead of one static
 // "Synthesizing…" spinner line. Purely cosmetic — the request is a single
 // call; these stages just narrate its known phases.
-function useLoadingStage(active: boolean) {
+function useLoadingStage() {
   const [stage, setStage] = useState(0);
   useEffect(() => {
-    if (!active) {
-      setStage(0);
-      return;
-    }
     const id = setInterval(() => setStage((s) => (s + 1) % 4), 1500);
     return () => clearInterval(id);
-  }, [active]);
+  }, []);
   return stage;
 }
 
 function StagedLoading() {
   const { t } = useLang();
-  const stage = useLoadingStage(true);
+  const stage = useLoadingStage();
   const stages = [
     t("insights.load1", "Scanning for spikes…"),
     t("insights.load2", "Scoring district risk…"),
@@ -494,39 +490,40 @@ function InsightsInner() {
   const { t, lang } = useLang();
   const params = useSearchParams();
   const ds = params.get("ds") ?? "";
-  const [data, setData] = useState<InsightsResponse | null>(null);
-  const [error, setError] = useState("");
-  const [brief, setBrief] = useState<string>("");
-  const [briefLoading, setBriefLoading] = useState(false);
   // Bumped by the Freshness "refresh" button to force a `&refresh=1` refetch
   // of both the insights bundle and the brief.
   const [refreshTick, setRefreshTick] = useState(0);
+  const requestKey = `${ds}:${lang}:${refreshTick}`;
+  const [dataResult, setDataResult] = useState<{ key: string; value: InsightsResponse } | null>(null);
+  const [errorResult, setErrorResult] = useState<{ key: string; message: string } | null>(null);
+  const [briefResult, setBriefResult] = useState<{ key: string; value: string } | null>(null);
+  const data = dataResult?.key === requestKey ? dataResult.value : null;
+  const error = errorResult?.key === requestKey ? errorResult.message : "";
+  const briefKey = `${requestKey}:${data?.computed_at ?? "pending"}`;
+  const brief = briefResult?.key === briefKey ? briefResult.value : "";
+  const briefLoading = Boolean(data && briefResult?.key !== briefKey);
 
   useEffect(() => {
     if (!ds) return;
     let active = true;
-    setData(null);
-    setError("");
     getInsights(ds, lang, refreshTick > 0)
-      .then((d) => active && setData(d))
-      .catch((e) => active && setError(String(e)));
+      .then((value) => active && setDataResult({ key: requestKey, value }))
+      .catch((e) => active && setErrorResult({ key: requestKey, message: String(e) }));
     return () => {
       active = false;
     };
-  }, [ds, lang, refreshTick]);
+  }, [ds, lang, refreshTick, requestKey]);
 
   useEffect(() => {
     if (!ds || !data) return;
     let active = true;
-    setBriefLoading(true);
     getInsightsBrief(ds, lang, refreshTick > 0)
-      .then((r) => active && setBrief(r.brief))
-      .catch(() => active && setBrief(""))
-      .finally(() => active && setBriefLoading(false));
+      .then((r) => active && setBriefResult({ key: briefKey, value: r.brief }))
+      .catch(() => active && setBriefResult({ key: briefKey, value: "" }));
     return () => {
       active = false;
     };
-  }, [ds, data, lang, refreshTick]);
+  }, [ds, data, lang, refreshTick, briefKey]);
 
   const refresh = () => setRefreshTick((n) => n + 1);
 

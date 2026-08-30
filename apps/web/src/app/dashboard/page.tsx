@@ -32,17 +32,18 @@ function KpiCard({
   filters,
   onResult,
   refreshKey = 0,
-  forceRefreshAt = 0,
 }: {
   ds: string;
   kpi: KpiSpec;
   filters: Filters;
   onResult?: (r: QueryResult) => void;
   refreshKey?: number;
-  forceRefreshAt?: number;
 }) {
   const [value, setValue] = useState<string>("—");
+  const lastRefreshKey = useRef(0);
   useEffect(() => {
+    const forceRefresh = refreshKey > lastRefreshKey.current;
+    lastRefreshKey.current = refreshKey;
     runQuery(
       ds,
       {
@@ -50,7 +51,7 @@ function KpiCard({
         measures: [{ agg: kpi.agg, column: kpi.column ?? undefined, alias: "v" }],
         filters: { ...kpi.filters, ...filters },
       },
-      refreshKey > 0 && refreshKey === forceRefreshAt
+      forceRefresh
     )
       .then((r) => {
         onResult?.(r);
@@ -61,7 +62,7 @@ function KpiCard({
       })
       .catch(() => setValue("—"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ds, kpi, filters, refreshKey, forceRefreshAt]);
+  }, [ds, kpi, filters, refreshKey]);
   return (
     <div className="panel p-4 sweep-in">
       <div className="label-hud">{kpi.title}</div>
@@ -89,23 +90,24 @@ function ChartPanel({
   filters,
   onSelect,
   refreshKey = 0,
-  forceRefreshAt = 0,
 }: {
   ds: string;
   spec: ChartSpec;
   filters: Filters;
   onSelect?: (dim: string, value: string) => void;
   refreshKey?: number;
-  forceRefreshAt?: number;
 }) {
   const [data, setData] = useState<{ name: string; value: number }[]>([]);
+  const lastRefreshKey = useRef(0);
   useEffect(() => {
-    runQuery(ds, chartQuery(spec, filters), refreshKey > 0 && refreshKey === forceRefreshAt)
+    const forceRefresh = refreshKey > lastRefreshKey.current;
+    lastRefreshKey.current = refreshKey;
+    runQuery(ds, chartQuery(spec, filters), forceRefresh)
       .then((r) =>
         setData(r.rows.map((row) => ({ name: String(row[0] ?? "?"), value: Number(row[1] ?? 0) })))
       )
       .catch(() => setData([]));
-  }, [ds, spec, filters, refreshKey, forceRefreshAt]);
+  }, [ds, spec, filters, refreshKey]);
 
   const option = useMemo(() => {
     if (spec.kind === "timeseries") {
@@ -350,11 +352,6 @@ function DashboardInner() {
   const [error, setError] = useState("");
   const [firstResult, setFirstResult] = useState<QueryResult | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // Which refreshKey value corresponds to a manual ⟳ click (vs. a filters
-  // change, which also happens to touch these panels' effects but must not
-  // force a cache-bypassing refetch). Set just before bumping refreshKey so
-  // the child effects that fire on the resulting re-render see a match.
-  const forceRefreshAtRef = useRef(0);
 
   useEffect(() => {
     if (!ds) return;
@@ -363,10 +360,7 @@ function DashboardInner() {
 
   const refresh = () => {
     setFirstResult(null);
-    setRefreshKey((k) => {
-      forceRefreshAtRef.current = k + 1;
-      return k + 1;
-    });
+    setRefreshKey((k) => k + 1);
   };
 
   if (!ds)
@@ -425,7 +419,6 @@ function DashboardInner() {
             kpi={k}
             filters={filters}
             refreshKey={refreshKey}
-            forceRefreshAt={forceRefreshAtRef.current}
             onResult={i === 0 ? setFirstResult : undefined}
           />
         ))}
@@ -439,7 +432,6 @@ function DashboardInner() {
             spec={c}
             filters={filters}
             refreshKey={refreshKey}
-            forceRefreshAt={forceRefreshAtRef.current}
             onSelect={(dim, value) => {
               if (dim.includes("(")) return; // derived dims (hour()) aren't filterable
               setFilters((f) => ({ ...f, [dim]: value }));

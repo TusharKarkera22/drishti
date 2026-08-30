@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import maplibregl from "maplibre-gl";
 import Shell from "@/components/Shell";
 import PageIntro from "@/components/PageIntro";
+import TemporalControls from "@/components/TemporalControls";
 import { useLang } from "@/lib/i18n";
+import { contextFromSearchParams } from "@/lib/investigation-context";
 import {
   byRole,
   getHotspots,
@@ -15,36 +17,55 @@ import {
   primaryTable,
   runQuery,
   type Manifest,
+  type TemporalComparisonFrame,
 } from "@/lib/api";
 
-function MapInner() {
+function MapWorkspace({ query }: { query: string }) {
   const { t } = useLang();
-  const params = useSearchParams();
-  const ds = params.get("ds") ?? "";
+  const initialContext = useMemo(() => contextFromSearchParams(query).context, [query]);
+  const ds = initialContext.dataset ?? "";
   const mapDiv = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const riskMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const pendingPlaybackRef = useRef<TemporalComparisonFrame | null>(null);
   const [manifest, setManifest] = useState<Manifest | null>(null);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [category, setCategory] = useState("");
-  const [band, setBand] = useState("");
-  const [overlay, setOverlay] = useState<"" | "risk" | "percap">("");
-  const [stats, setStats] = useState("");
+  const [category, setCategory] = useState(initialContext.category ?? "");
+  const [band, setBand] = useState(() => ({ night: "0-6", morning: "6-12", afternoon: "12-18", evening: "18-23" } as Record<string, string>)[initialContext.band ?? ""] ?? "");
+  const [overlay, setOverlay] = useState<"" | "risk" | "percap">(initialContext.overlay === "risk" ? "risk" : "");
+  const [hotspotStatus, setHotspotStatus] = useState<number | "no-geo" | null>(null);
+  const hotspotRequestRef = useRef(0);
 
   useEffect(() => {
     if (!ds) return;
     getManifest(ds).then(setManifest).catch(() => {});
   }, [ds]);
 
-  // categories for the filter chips
-  useEffect(() => {
-    if (!manifest) return;
+  const categories = useMemo(() => {
+    if (!manifest) return [];
     const pt = primaryTable(manifest);
     const cat = byRole(pt, "category");
-    if (!cat) return;
-    setCategories(cat.stats.top_values.map((t) => String(t.value)).slice(0, 8));
+    if (!cat) return [];
+    return cat.stats.top_values.map((item) => String(item.value)).slice(0, 8);
   }, [manifest]);
+  const stats = typeof hotspotStatus === "number"
+    ? `${hotspotStatus} ${t("map.hotspotCells", "hotspot cells")}`
+    : hotspotStatus === "no-geo"
+      ? t("map.noGeoData", "no geo data in this dataset")
+      : "";
+  const timeColumn = manifest ? (byRole(primaryTable(manifest), "timestamp") ?? byRole(primaryTable(manifest), "date")) : undefined;
+  const maxDate = timeColumn?.stats.max ? String(timeColumn.stats.max).slice(0, 10) : "";
+
+  const applyPlaybackFrame = useCallback((frame: TemporalComparisonFrame | null) => {
+    pendingPlaybackRef.current = frame;
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const data = { type: "FeatureCollection" as const, features: (frame?.cells ?? []).map((cell) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [cell.lng, cell.lat] }, properties: { count: cell.count, change: cell.change } })) };
+    const source = map.getSource("playback") as maplibregl.GeoJSONSource | undefined;
+    if (source) return source.setData(data);
+    map.addSource("playback", { type: "geojson", data });
+    map.addLayer({ id: "playback-points", type: "circle", source: "playback", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "count"], 1, 5, 20, 16], "circle-color": ["match", ["get", "change"], "emerging", "#ff3b30", "declining", "#2dd4bf", "#ffb000"], "circle-opacity": 0.75, "circle-stroke-color": "#fff1c2", "circle-stroke-width": 1 } });
+  }, []);
 
   // init map once
   useEffect(() => {
@@ -63,16 +84,17 @@ function MapInner() {
         },
         layers: [{ id: "carto", type: "raster", source: "carto" }],
       },
-      center: [76.5, 14.5], // Karnataka
-      zoom: 6.2,
+      center: initialContext.center ? [initialContext.center[1], initialContext.center[0]] : [76.5, 14.5],
+      zoom: initialContext.zoom ?? 6.2,
     });
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     mapRef.current = map;
+    map.once("load", () => applyPlaybackFrame(pendingPlaybackRef.current));
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [applyPlaybackFrame, initialContext.center, initialContext.zoom]);
 
   // hotspot layer (re-fetch on filter change)
   useEffect(() => {
@@ -85,8 +107,10 @@ function MapInner() {
       p.hour_from = f;
       p.hour_to = to;
     }
+    const requestId = ++hotspotRequestRef.current;
     getHotspots(ds, p)
       .then((r) => {
+        if (requestId !== hotspotRequestRef.current) return;
         const geojson = {
           type: "FeatureCollection" as const,
           features: r.cells.map((c) => ({
@@ -95,7 +119,7 @@ function MapInner() {
             properties: { count: c.count, intensity: c.intensity },
           })),
         };
-        setStats(`${r.cells.length} ${t("map.hotspotCells", "hotspot cells")}`);
+        setHotspotStatus(r.cells.length);
         const apply = () => {
           const src = map.getSource("hotspots") as maplibregl.GeoJSONSource | undefined;
           if (src) {
@@ -137,8 +161,32 @@ function MapInner() {
         if (map.isStyleLoaded()) apply();
         else map.once("load", apply);
       })
-      .catch(() => setStats(t("map.noGeoData", "no geo data in this dataset")));
+      .catch(() => requestId === hotspotRequestRef.current && setHotspotStatus("no-geo"));
+    return () => { hotspotRequestRef.current += 1; };
   }, [ds, category, band]);
+
+  useEffect(() => {
+    const area = initialContext.area;
+    const map = mapRef.current;
+    if (!area || !map || !manifest || !ds) return;
+    const pt = primaryTable(manifest);
+    const admin = byRole(pt, "admin_area_1");
+    const lat = byRole(pt, "latitude");
+    const lng = byRole(pt, "longitude");
+    if (!admin || !lat || !lng) return;
+    let active = true;
+    runQuery(ds, {
+      table: pt.name,
+      dimensions: [admin.name],
+      measures: [{ agg: "avg", column: lat.name, alias: "lat" }, { agg: "avg", column: lng.name, alias: "lng" }],
+      filters: { [admin.name]: area },
+      limit: 1,
+    }).then((result) => {
+      if (!active || !result.rows[0]) return;
+      map.flyTo({ center: [Number(result.rows[0][2]), Number(result.rows[0][1])], zoom: 10 });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [ds, manifest, initialContext.area]);
 
   // pulsing red-zone markers on spiking areas
   useEffect(() => {
@@ -150,6 +198,7 @@ function MapInner() {
     const admin = byRole(pt, "admin_area_1");
     if (!lat || !lng || !admin) return;
 
+    let active = true;
     Promise.all([
       getSpikes(ds),
       runQuery(ds, {
@@ -163,6 +212,7 @@ function MapInner() {
       }),
     ])
       .then(([spikes, centroids]) => {
+        if (!active) return;
         markersRef.current.forEach((m) => m.remove());
         markersRef.current = [];
         const centers = new Map(
@@ -183,6 +233,7 @@ function MapInner() {
         });
       })
       .catch(() => {});
+    return () => { active = false; markersRef.current.forEach((marker) => marker.remove()); markersRef.current = []; };
   }, [ds, manifest]);
 
   // district risk overlay: composite score or per-capita rate as sized circles
@@ -198,6 +249,7 @@ function MapInner() {
     const admin = byRole(pt, "admin_area_1");
     if (!lat || !lng || !admin) return;
 
+    let active = true;
     Promise.all([
       getRisk(ds),
       runQuery(ds, {
@@ -211,6 +263,7 @@ function MapInner() {
       }),
     ])
       .then(([risk, centroids]) => {
+        if (!active) return;
         const centers = new Map(
           centroids.rows.map((r) => [String(r[0]), [Number(r[2]), Number(r[1])] as [number, number]])
         );
@@ -237,6 +290,7 @@ function MapInner() {
         });
       })
       .catch(() => {});
+    return () => { active = false; riskMarkersRef.current.forEach((marker) => marker.remove()); riskMarkersRef.current = []; };
   }, [ds, manifest, overlay]);
 
   const OVERLAY_OPTIONS: { id: "" | "risk" | "percap"; labelKey: string; labelEn: string }[] = [
@@ -303,14 +357,22 @@ function MapInner() {
         <span className="value-mono text-xs text-teal ml-auto">{stats}</span>
       </div>
       <div ref={mapDiv} className="panel flex-1 min-h-0" />
+      {maxDate && <TemporalControls key={`${ds}:${maxDate}:${initialContext.from}:${initialContext.to}:${initialContext.frame}`} ds={ds} maxDate={maxDate} area={initialContext.area} category={category || undefined} initialFrom={initialContext.from} initialTo={initialContext.to} initialFrame={initialContext.frame} onFrame={applyPlaybackFrame} />}
       <div className="label-hud">
         {t(
           "map.legend",
           "heat = spatiotemporal density · pulsing red = statistically spiking zones vs own baseline",
         )}
+        <span className="ml-3 text-signal">● emerging</span><span className="ml-2 text-amber">● persistent</span><span className="ml-2 text-teal">● declining</span>
       </div>
     </div>
   );
+}
+
+function MapInner() {
+  const params = useSearchParams();
+  const query = params.toString();
+  return <MapWorkspace key={query} query={query} />;
 }
 
 export default function MapPage() {

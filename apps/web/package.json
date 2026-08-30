@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test src/lib/investigation-context.test.ts"
   },
   "dependencies": {
     "@types/cytoscape": "^3.21.9",

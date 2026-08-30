@@ -2,11 +2,16 @@
 node_modules/
 .venv/
 __pycache__/
+.pytest_cache/
+.pytest-temp-*/
+.tmp/
 apps/web/out/
 apps/web/.next/
 apps/api/client/
 apps/api/seed_data/
 data/
+!apps/web/src/app/data/
+!apps/web/src/app/data/page.tsx
 # large / internal assets — kept out of the public repo
 shots/
 docs/

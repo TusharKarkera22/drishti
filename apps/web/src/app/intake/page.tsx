@@ -343,7 +343,7 @@ function IntakeInner() {
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx"
             className="hidden"
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
           />
@@ -362,6 +362,10 @@ function IntakeInner() {
             </>
           )}
         </label>
+
+        <p className="value-mono text-[10px] text-dim mt-3">
+          {t("intake.demoDataNotice", "Public demo — upload synthetic or non-sensitive data only. CSV/XLSX limits are enforced.")}
+        </p>
 
         {ds && (
           <div className="flex items-center gap-2 mt-4 p-1 bg-ink-2 border border-line w-fit">

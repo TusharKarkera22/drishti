@@ -78,13 +78,16 @@ export default function Tour() {
   // Auto-open once per browser, only once a dataset is actually open.
   useEffect(() => {
     if (!ds) return;
-    try {
-      if (window.localStorage.getItem(STORAGE_KEY) === "1") return;
-    } catch {
-      /* if localStorage is unavailable, fall through and show the tour */
-    }
-    setStep(0);
-    setOpen(true);
+    const timer = window.setTimeout(() => {
+      try {
+        if (window.localStorage.getItem(STORAGE_KEY) === "1") return;
+      } catch {
+        /* if localStorage is unavailable, fall through and show the tour */
+      }
+      setStep(0);
+      setOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [ds]);
 
   // Re-open on demand via the Shell's "Tour" button.
@@ -100,45 +103,43 @@ export default function Tour() {
   // Position the card + highlight against the current step's anchor.
   useEffect(() => {
     if (!open) return;
-    const anchor = STEPS[step]?.anchor;
-    if (!anchor) {
-      setTargetRect(null);
-      setCardStyle({
-        position: "fixed",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-      });
-      return;
-    }
-    const el = document.querySelector(`[data-tour="${anchor}"]`);
-    if (!el) {
-      setTargetRect(null);
-      setCardStyle({ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)" });
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    setTargetRect(rect);
+    const frame = window.requestAnimationFrame(() => {
+      const anchor = STEPS[step]?.anchor;
+      if (!anchor) {
+        setTargetRect(null);
+        setCardStyle({
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+        });
+        return;
+      }
+      const el = document.querySelector(`[data-tour="${anchor}"]`);
+      if (!el) {
+        setTargetRect(null);
+        setCardStyle({ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)" });
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      setTargetRect(rect);
 
-    const cardWidth = 320;
-    const margin = 12;
-    // Prefer placing the card to the right of the anchor; fall back to below
-    // it if that would overflow the viewport (sidebar nav runs the full
-    // height, so its card goes to the right regardless). Either way, clamp
-    // the final left so the card's right edge never runs past the viewport
-    // (header anchors like the alerts bell sit close to the right edge).
-    let left = rect.right + margin;
-    let top = rect.top;
-    if (left + cardWidth > window.innerWidth - margin) {
-      left = rect.left;
-      top = rect.bottom + margin;
-    }
-    left = Math.min(left, window.innerWidth - cardWidth - margin);
-    left = Math.max(left, margin);
-    top = Math.min(top, window.innerHeight - 220);
-    top = Math.max(top, margin);
+      const cardWidth = 320;
+      const margin = 12;
+      let left = rect.right + margin;
+      let top = rect.top;
+      if (left + cardWidth > window.innerWidth - margin) {
+        left = rect.left;
+        top = rect.bottom + margin;
+      }
+      left = Math.min(left, window.innerWidth - cardWidth - margin);
+      left = Math.max(left, margin);
+      top = Math.min(top, window.innerHeight - 220);
+      top = Math.max(top, margin);
 
-    setCardStyle({ position: "fixed", top, left, width: cardWidth });
+      setCardStyle({ position: "fixed", top, left, width: cardWidth });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, step]);
 
   const finish = () => {

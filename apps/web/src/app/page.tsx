@@ -84,7 +84,7 @@ export default function Home() {
             ref={fileInput}
             type="file"
             multiple
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx"
             className="hidden"
             onChange={(e) => upload(Array.from(e.target.files ?? []))}
           />
@@ -103,6 +103,10 @@ export default function Home() {
             </>
           )}
         </div>
+
+        <p className="value-mono text-[10px] text-dim mt-3 text-center">
+          {t("home.demoDataNotice", "Public demo — upload synthetic or non-sensitive data only. CSV/XLSX limits are enforced.")}
+        </p>
 
         {error && (
           <div className="mt-4 panel p-3 text-signal text-xs value-mono">

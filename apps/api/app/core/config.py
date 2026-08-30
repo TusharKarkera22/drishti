@@ -43,3 +43,23 @@ QUICKML_OAUTH_SOID = os.environ.get("QUICKML_OAUTH_SOID") or (
 QUICKML_MAX_TOKENS = int(os.environ.get("QUICKML_MAX_TOKENS", "16384"))
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
+
+# Public demo upload guardrails. Values are deliberately conservative enough
+# for the seeded judge workflows while bounding memory, disk, and parse work.
+MAX_UPLOAD_FILES = int(os.environ.get("MAX_UPLOAD_FILES", "8"))
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+MAX_UPLOAD_TOTAL_BYTES = int(
+    os.environ.get("MAX_UPLOAD_TOTAL_BYTES", str(50 * 1024 * 1024))
+)
+MAX_UPLOAD_ROWS = int(os.environ.get("MAX_UPLOAD_ROWS", "250000"))
+MAX_UPLOAD_REQUEST_BYTES = int(
+    os.environ.get("MAX_UPLOAD_REQUEST_BYTES", str(MAX_UPLOAD_TOTAL_BYTES + 1024 * 1024))
+)
+MAX_XLSX_UNCOMPRESSED_BYTES = int(
+    os.environ.get("MAX_XLSX_UNCOMPRESSED_BYTES", str(100 * 1024 * 1024))
+)
+MAX_XLSX_MEMBER_BYTES = int(
+    os.environ.get("MAX_XLSX_MEMBER_BYTES", str(50 * 1024 * 1024))
+)
+MAX_XLSX_MEMBERS = int(os.environ.get("MAX_XLSX_MEMBERS", "2048"))
+MAX_XLSX_COMPRESSION_RATIO = int(os.environ.get("MAX_XLSX_COMPRESSION_RATIO", "200"))

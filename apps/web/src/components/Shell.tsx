@@ -7,6 +7,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { Info, Compass } from "lucide-react";
 import { getAlerts, markAlertsRead, type SentinelAlert } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
+import { contextFromSearchParams, mergeContextIntoHref } from "@/lib/investigation-context";
 import Tour from "@/components/Tour";
 
 const NAV = [
@@ -18,6 +19,8 @@ const NAV = [
   { href: "/network",   label: "Network",    sub: "who's connected",     step: "06" },
   { href: "/agents",    label: "Ask",        sub: "question the data",   step: "07" },
   { href: "/report",    label: "Report",     sub: "printable summary",   step: "08" },
+  { href: "/missions",  label: "Missions",   sub: "guided investigation", step: "09" },
+  { href: "/tracker",   label: "Tracker",    sub: "saved cases & watches", step: "10" },
 ];
 
 function Clock() {
@@ -170,6 +173,7 @@ function ShellInner({
   const pathname = usePathname();
   const params = useSearchParams();
   const ds = params.get("ds") ?? "";
+  const globalContext = contextFromSearchParams(params).context;
   const { t, lang, toggle } = useLang();
 
   return (
@@ -191,7 +195,7 @@ function ShellInner({
             return (
               <Link
                 key={n.href}
-                href={`${n.href}/?ds=${ds}`}
+                href={mergeContextIntoHref(`${n.href}/`, globalContext, "global")}
                 className={`flex items-center gap-3 px-4 py-2.5 text-sm border-l-2 transition-colors ${
                   active
                     ? "border-amber text-amber bg-ink-3"
