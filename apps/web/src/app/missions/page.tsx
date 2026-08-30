@@ -43,12 +43,12 @@ function MissionWorkspace({ decoded, lang }: { decoded: DecodedInvestigationCont
   const selectedQuestion = lang === "kn" ? selected.questionKn : selected.question;
   const context = useMemo(() => ({ ...decoded.context, version: INVESTIGATION_CONTEXT_VERSION, dataset: ds, investigation: mission, area: area || undefined }), [decoded.context, ds, mission, area]);
   const contextKey = `${ds}|${lang}|${mission}|${area}`;
+  const router = useRouter();
+  const [pinning, setPinning] = useState(false);
   useEffect(() => { askId.current += 1; }, [contextKey]);
   useEffect(() => { if (!ds) return; let active = true; Promise.all([getInsights(ds, lang), getInsightsBrief(ds, lang)]).then(([i, b]) => { if (!active) return; setInsights(i); setBrief({ text: b.brief, source: b.source }); }).catch(() => { if (active) setNotice("Deterministic mission evidence is temporarily unavailable."); }); return () => { active = false; }; }, [ds, lang]);
   if (!ds) return <div className="panel p-8 text-center text-dim">Choose a dataset before launching Mission Control.</div>;
   const ask = async () => { if (!question.trim()) return; const requestId = ++askId.current; setBusy(true); setAnswer(null); try { const prompt = `${question.trim()}\n\nSelected operational context: mission=${mission}; area=${area || "all areas"}. Use tools for every factual claim and distinguish associations from verified facts.`; const value = await runAgent(ds, selected.playbook, prompt, lang); if (askId.current === requestId) setAnswer({ key: contextKey, report: value.report, steps: value.steps }); } catch { if (askId.current === requestId) setNotice("Narrative service is unavailable. Deterministic evidence and the fallback briefing remain below."); } finally { if (askId.current === requestId) setBusy(false); } };
-  const router = useRouter();
-  const [pinning, setPinning] = useState(false);
   const pin = async () => {
     if (!ds || pinning) return;
     setPinning(true);

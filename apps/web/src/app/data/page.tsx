@@ -253,6 +253,7 @@ function DataInner() {
       setLoading(false);
       return;
     }
+    setLoading(true);
     getComposition(ds)
       .then((c) => {
         setComp(c);
@@ -262,9 +263,11 @@ function DataInner() {
       .finally(() => setLoading(false));
   }, [ds]);
 
+  // Defer out of the effect body: calling load() synchronously sets state during
+  // the effect and triggers a cascading render (same idiom as Tracker/Network).
   useEffect(() => {
-    setLoading(true);
-    load();
+    const timer = window.setTimeout(() => load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   if (!ds) {
