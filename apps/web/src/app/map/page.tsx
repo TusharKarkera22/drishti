@@ -60,9 +60,19 @@ function MapWorkspace({ query }: { query: string }) {
     pendingPlaybackRef.current = frame;
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const data = { type: "FeatureCollection" as const, features: (frame?.cells ?? []).map((cell) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [cell.lng, cell.lat] }, properties: { count: cell.count, change: cell.change } })) };
+    const cells = frame?.cells ?? [];
+    const data = { type: "FeatureCollection" as const, features: cells.map((cell) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [cell.lng, cell.lat] }, properties: { count: cell.count, change: cell.change } })) };
+    // The hotspot heat layer is added AFTER this one (its data arrives async), so
+    // it paints over the playback circles and the frame looks like nothing changed.
+    // Keep playback on top, and fade the heat while a frame is displayed so the
+    // emerging/persistent/declining colours actually read.
+    if (map.getLayer("hotspot-heat")) map.setPaintProperty("hotspot-heat", "heatmap-opacity", cells.length ? 0.25 : 0.75);
     const source = map.getSource("playback") as maplibregl.GeoJSONSource | undefined;
-    if (source) return source.setData(data);
+    if (source) {
+      source.setData(data);
+      if (map.getLayer("playback-points")) map.moveLayer("playback-points");
+      return;
+    }
     map.addSource("playback", { type: "geojson", data });
     map.addLayer({ id: "playback-points", type: "circle", source: "playback", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "count"], 1, 5, 20, 16], "circle-color": ["match", ["get", "change"], "emerging", "#ff3b30", "declining", "#2dd4bf", "#ffb000"], "circle-opacity": 0.75, "circle-stroke-color": "#fff1c2", "circle-stroke-width": 1 } });
   }, []);
@@ -74,15 +84,27 @@ function MapWorkspace({ query }: { query: string }) {
       container: mapDiv.current,
       style: {
         version: 8,
+        // CARTO's dark_all basemap now requires an API key and watermarks every
+        // tile with "API KEY REQUIRED". Esri's Dark Gray Canvas is keyless, free
+        // with attribution, and designed as a neutral base for data overlays.
+        // Labels ship as a separate reference layer, so we stack both.
         sources: {
-          carto: {
+          basemap: {
             type: "raster",
-            tiles: ["https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"],
+            tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
-            attribution: "© OpenStreetMap © CARTO",
+            attribution: "© Esri © OpenStreetMap contributors",
+          },
+          basemapLabels: {
+            type: "raster",
+            tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
           },
         },
-        layers: [{ id: "carto", type: "raster", source: "carto" }],
+        layers: [
+          { id: "basemap", type: "raster", source: "basemap" },
+          { id: "basemap-labels", type: "raster", source: "basemapLabels" },
+        ],
       },
       center: initialContext.center ? [initialContext.center[1], initialContext.center[0]] : [76.5, 14.5],
       zoom: initialContext.zoom ?? 6.2,

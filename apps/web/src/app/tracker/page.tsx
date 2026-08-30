@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Shell from "@/components/Shell";
 import PageIntro from "@/components/PageIntro";
 import { contextFromSearchParams, contextToPersistedState, daysBefore, INVESTIGATION_CONTEXT_VERSION, mergeContextIntoHref, type InvestigationContext } from "@/lib/investigation-context";
-import { createInvestigationCard, createWatchRule, deleteInvestigationCard, deleteWatchRule, evaluateWatchRule, listInvestigationCards, listWatchEvents, listWatchRules, updateInvestigationCard, updateWatchRule, type InvestigationCard, type InvestigationPriority, type WatchEvent, type WatchRule } from "@/lib/api";
+import { byRole, createInvestigationCard, createWatchRule, deleteInvestigationCard, deleteWatchRule, evaluateWatchRule, getManifest, listInvestigationCards, listWatchEvents, listWatchRules, primaryTable, updateInvestigationCard, updateWatchRule, type InvestigationCard, type InvestigationPriority, type WatchEvent, type WatchRule } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 const statuses: InvestigationCard["status"][] = ["new", "reviewing", "actioned", "resolved"];
@@ -34,6 +34,20 @@ function TrackerWorkspace({ context, lang }: { context: InvestigationContext; la
   const [ruleName, setRuleName] = useState("Emerging activity watch");
   const [threshold, setThreshold] = useState(25);
   const [message, setMessage] = useState("");
+  // A dataset's "now" is its last record, not wall-clock today: defaulting the
+  // watch window to today evaluates an empty period (delta n/a) on any dataset
+  // whose data ends in the past. Same source the Map's temporal controls use.
+  const [maxDate, setMaxDate] = useState("");
+  useEffect(() => {
+    if (!ds) return;
+    let active = true;
+    getManifest(ds).then((m) => {
+      const pt = primaryTable(m);
+      const col = byRole(pt, "timestamp") ?? byRole(pt, "date");
+      if (active && col?.stats.max) setMaxDate(String(col.stats.max).slice(0, 10));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [ds]);
   const requestId = useRef(0);
   const applyState = useCallback((next: Awaited<ReturnType<typeof fetchTrackerState>>) => { setCards(next.cards); setRules(next.rules); setEvents(next.events); }, []);
   const reload = useCallback(async () => {
@@ -47,7 +61,7 @@ function TrackerWorkspace({ context, lang }: { context: InvestigationContext; la
   if (!ds) return <div className="panel p-8 text-center text-dim">Choose a dataset before opening Tracker.</div>;
   const mutate = async (action: () => Promise<unknown>, notice = "") => { await action(); if (notice) setMessage(notice); await reload(); };
   const save = () => mutate(() => createInvestigationCard(ds, { title, kind: context.node ? "entity" : context.area ? "area" : "mission", target: context.node ?? context.area ?? "", priority, owner, notes, state: contextToPersistedState(context) }), "Investigation pinned. Demo-instance state may reset after redeployment.");
-  const addRule = async () => { const to = context.to ?? new Date().toISOString().slice(0, 10); const from = context.from ?? daysBefore(to, 28); const rule = await createWatchRule(ds, { name: ruleName, metric: "percent_change", operator: "gte", threshold, from_date: from, to_date: to, area: context.area ?? "", category: context.category ?? "", enabled: true }); await evaluateWatchRule(ds, rule.id); setMessage("Watch evaluated against the selected period."); await reload(); };
+  const addRule = async () => { const to = context.to || maxDate || new Date().toISOString().slice(0, 10); const from = context.from ?? daysBefore(to, 28); const rule = await createWatchRule(ds, { name: ruleName, metric: "percent_change", operator: "gte", threshold, from_date: from, to_date: to, area: context.area ?? "", category: context.category ?? "", enabled: true }); await evaluateWatchRule(ds, rule.id); setMessage("Watch evaluated against the selected period."); await reload(); };
 
   return <div className="space-y-5">
     <div className="panel p-4 border-l-2 border-amber"><div className="label-hud text-amber mb-1">{copy.persistence}</div><p className="text-xs text-dim">{copy.persistenceBody}</p></div>

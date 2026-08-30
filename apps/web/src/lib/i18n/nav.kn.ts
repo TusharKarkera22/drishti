@@ -12,7 +12,7 @@ export const navKn: Record<string, string> = {
   "nav.AGT": "ಸಹಾಯಕರು",
   "nav.RPT": "ಕೈಪಿಡಿ",
 
-  // ── Pipeline nav (Shell.tsx NAV array: step "01".."08") ──────────────────
+  // ── Pipeline nav (Shell.tsx NAV array: step "01".."10") ──────────────────
   "nav.01": "ದತ್ತಾಂಶ",
   "nav.02": "ಸ್ವಚ್ಛ",
   "nav.03": "ಸಾರಾಂಶ",
@@ -21,6 +21,8 @@ export const navKn: Record<string, string> = {
   "nav.06": "ಜಾಲ",
   "nav.07": "ಕೇಳಿ",
   "nav.08": "ವರದಿ",
+  "nav.09": "ಕಾರ್ಯಾಚರಣೆಗಳು",
+  "nav.10": "ಟ್ರ್ಯಾಕರ್",
 
   "nav.sub.01": "ಫೈಲ್‌ಗಳು ಮತ್ತು ದಾಖಲೆಗಳು",
   "nav.sub.02": "ಅಸ್ತವ್ಯಸ್ತ ಫೈಲ್‌ಗಳನ್ನು ಸರಿಪಡಿಸಿ",
@@ -30,6 +32,8 @@ export const navKn: Record<string, string> = {
   "nav.sub.06": "ಯಾರು ಸಂಪರ್ಕ ಹೊಂದಿದ್ದಾರೆ",
   "nav.sub.07": "ದತ್ತಾಂಶವನ್ನು ಪ್ರಶ್ನಿಸಿ",
   "nav.sub.08": "ಮುದ್ರಿಸಬಹುದಾದ ಸಾರಾಂಶ",
+  "nav.sub.09": "ಮಾರ್ಗದರ್ಶಿ ತನಿಖೆ",
+  "nav.sub.10": "ಉಳಿಸಿದ ಪ್ರಕರಣಗಳು ಮತ್ತು ನಿಗಾ",
 
   "shell.tagline": "ಅಪರಾಧ ಗುಪ್ತಚರ",
   "shell.subtitle": "ಕೆಎಸ್‌ಪಿ · ಡೇಟಾಥಾನ್ 2026",

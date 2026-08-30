@@ -39,6 +39,14 @@ Karnataka's police register **lakhs of FIRs a year**, but the intelligence in th
 
 <img src="screenshots/map.png" width="49%"/> <img src="screenshots/agents.png" width="49%"/>
 
+**Mission Control and the Investigation Tracker — pick the operational question, then work the case**
+
+<img src="screenshots/missions.png" width="49%"/> <img src="screenshots/tracker.png" width="49%"/>
+
+**Temporal comparison — what changed, where, against the previous period**
+
+![Temporal comparison](screenshots/temporal.png)
+
 ---
 
 ## How it answers Problem Statement 2

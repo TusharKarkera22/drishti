@@ -9,7 +9,7 @@ apps/web/out/
 apps/web/.next/
 apps/api/client/
 apps/api/seed_data/
-data/
+/data/
 !apps/web/src/app/data/
 !apps/web/src/app/data/page.tsx
 # large / internal assets — kept out of the public repo
@@ -20,3 +20,6 @@ docs/
 DRISHTI_Datathon2026.md
 .superpowers/
 .DS_Store
+
+# local screenshot scratch
+apps/web/shoot.mjs
